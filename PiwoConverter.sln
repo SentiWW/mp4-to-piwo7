@@ -1,0 +1,16 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PiwoConverter.Console", "PiwoConverter.Console\PiwoConverter.Console.csproj", "{D6E65318-9A7C-415D-826E-4FB28DECC670}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{D6E65318-9A7C-415D-826E-4FB28DECC670}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D6E65318-9A7C-415D-826E-4FB28DECC670}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D6E65318-9A7C-415D-826E-4FB28DECC670}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D6E65318-9A7C-415D-826E-4FB28DECC670}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal
