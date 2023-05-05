@@ -33,6 +33,8 @@ engine.GetMetadata(inputFile);
 // Extract audio from mp4
 engine.CustomCommand($"-i {inputVideoPath} -vn -acodec libmp3lame -qscale:a 2 {outputAudioPath}");
 
+Console.WriteLine($"Audio extracted to {outputAudioPath}");
+
 const int width = 12;
 const int height = 10;
 
@@ -104,7 +106,7 @@ foreach (var interpolateMethod in Enum.GetValues<PixelInterpolateMethod>())
         }
         outputBuilder.AppendLine();
 
-        Console.WriteLine($"Processed: {currentFrameNumber}/{totalFrames}");
+        Console.WriteLine($"Frames processed ({interpolateMethodName} interpolation): {currentFrameNumber + 1}/{totalFrames}");
         
         ArrayPool<string>.Shared.Return(buffer);
     }
