@@ -1,17 +1,22 @@
 ﻿using System.Buffers;
 using System.Text;
-
+using CommandLine;
 using ImageMagick;
 
 using MediaToolkit;
 using MediaToolkit.Model;
-using MediaToolkit.Options;
+using PiwoConverter.Console;
+
+var paramsResult = Parser.Default.ParseArguments<Options>(args);
+
+if (paramsResult.Errors.Any())
+    return;
 
 var currentDirectory = Directory.GetCurrentDirectory();
-var dataDirectory = Path.Combine(currentDirectory, "Data");
-var inputVideoPath = Path.Combine(dataDirectory, "video.mp4");
+var dataDirectory = Path.Combine(currentDirectory, "data");
+var inputVideoPath = paramsResult.Value.InputPath;
 var outputAudioPath = Path.Combine(dataDirectory, "audio.mp3");
-var outputFramesPath = Path.Combine(dataDirectory, "Frames");
+var outputFramesPath = Path.Combine(dataDirectory, "frames");
 
 var piwoHeader = $"PIWO_7_FILE{Environment.NewLine}" +
                       $"12 10{Environment.NewLine}";
@@ -30,10 +35,35 @@ var inputFile = new MediaFile
 
 engine.GetMetadata(inputFile);
 
+// Calculating how long audio extracvtion will take
+var audioSize = inputFile.Metadata.Duration.TotalSeconds * inputFile.Metadata.AudioData.BitRateKbs / 8;
+var timeToExtractAudio = TimeSpan.FromSeconds(audioSize / inputFile.Metadata.AudioData.BitRateKbs);
+    
 // Extract audio from mp4
-engine.CustomCommand($"-i {inputVideoPath} -vn -acodec libmp3lame -qscale:a 2 {outputAudioPath}");
+Console.WriteLine($"Exporting audio will take approximately {timeToExtractAudio.TotalSeconds} seconds. Do you want to continue (y/n)?");
 
-Console.WriteLine($"Audio extracted to {outputAudioPath}");
+var key = Console.ReadKey();
+if (key.Key != ConsoleKey.Y)
+    return;
+
+Console.WriteLine($"{Environment.NewLine}Exporting audio...");
+await Task.Run(() => engine.CustomCommand($"-i {inputVideoPath} -vn -acodec libmp3lame -qscale:a 2 {outputAudioPath}"));
+Console.WriteLine($"Audio exported to {outputAudioPath}.");
+
+// Calculating how long extraction will take
+var totalFrames = (int)Math.Floor(inputFile.Metadata.VideoData.Fps * inputFile.Metadata.Duration.TotalSeconds);
+var timeToExtractVideo = TimeSpan.FromSeconds(totalFrames / inputFile.Metadata.VideoData.Fps);
+
+// Export all frames
+Console.WriteLine($"Exporting video frames will take approximately {timeToExtractVideo.TotalSeconds} seconds. Do you want to continue (y/n)?");
+
+key = Console.ReadKey();
+if (key.Key != ConsoleKey.Y)
+    return;
+
+Console.WriteLine($"{Environment.NewLine}Exporting video frames... ");
+await Task.Run(() => engine.CustomCommand($"-i {inputVideoPath} -vf \"select=gte(n\\,0)\" -vsync vfr {Path.Join(outputFramesPath, "raw-frame-%d.bmp")}")); 
+Console.WriteLine("Video frames exported.");
 
 const int width = 12;
 const int height = 10;
@@ -43,12 +73,10 @@ var resizeSize = new MagickGeometry(width, height)
     IgnoreAspectRatio = true
 };
 
-var outputFile = new MediaFile();
-var options = new ConversionOptions();
-
 var outputBuilder = new StringBuilder();
 
-var totalFrames = Math.Floor(inputFile.Metadata.VideoData.Fps * inputFile.Metadata.Duration.TotalSeconds);
+Console.WriteLine("Processing video frames, this might take a while...");
+    
 foreach (var interpolateMethod in Enum.GetValues<PixelInterpolateMethod>())
 {
     if (interpolateMethod is PixelInterpolateMethod.Undefined)
@@ -62,16 +90,10 @@ foreach (var interpolateMethod in Enum.GetValues<PixelInterpolateMethod>())
     
     outputBuilder.AppendLine(piwoHeader);
     
-    for (var currentFrameNumber = 0; currentFrameNumber < totalFrames; currentFrameNumber++)
+    for (var currentFrameNumber = 1; currentFrameNumber <= totalFrames; currentFrameNumber++)
     {
         // Get raw frame
         var rawFrameFilePath = Path.Combine(outputFramesPath, $"raw-frame-{currentFrameNumber}.bmp");
-        if (!File.Exists(rawFrameFilePath))
-        {
-            outputFile.Filename = rawFrameFilePath;
-            options.Seek = TimeSpan.FromSeconds(currentFrameNumber / inputFile.Metadata.VideoData.Fps);
-            engine.GetThumbnail(inputFile, outputFile, options);
-        }
 
         // Resize frame and interpolate
         using var frame = new MagickImage(rawFrameFilePath);
@@ -116,4 +138,14 @@ foreach (var interpolateMethod in Enum.GetValues<PixelInterpolateMethod>())
     await writer.FlushAsync();
     writer.Close();
     outputBuilder.Clear();
+    
+    Console.WriteLine($"Output file created for {interpolateMethodName} interpolation: {piwoOutputPath}");
 }
+
+Console.WriteLine("Remove temporary frame files (y/n)?");
+
+key = Console.ReadKey();
+if (key.Key != ConsoleKey.Y)
+    return;
+    
+Directory.Delete(outputFramesPath, true);    
