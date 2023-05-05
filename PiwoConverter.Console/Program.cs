@@ -10,10 +10,14 @@ using MediaToolkit.Options;
 var currentDirectory = Directory.GetCurrentDirectory();
 var dataDirectory = Path.Combine(currentDirectory, "Data");
 var inputVideoPath = Path.Combine(dataDirectory, "video.mp4");
+var outputAudioPath = Path.Combine(dataDirectory, "audio.mp3");
 var outputFramesPath = Path.Combine(dataDirectory, "Frames");
 
 var piwoHeader = $"PIWO_7_FILE{Environment.NewLine}" +
                       $"12 10{Environment.NewLine}";
+
+if (!Directory.Exists(dataDirectory))
+    Directory.CreateDirectory(dataDirectory);
 
 if (!Directory.Exists(outputFramesPath))
     Directory.CreateDirectory(outputFramesPath);
@@ -25,6 +29,9 @@ var inputFile = new MediaFile
 };
 
 engine.GetMetadata(inputFile);
+
+// Extract audio from mp4
+engine.CustomCommand($"-i {inputVideoPath} -vn -acodec libmp3lame -qscale:a 2 {outputAudioPath}");
 
 const int width = 12;
 const int height = 10;
