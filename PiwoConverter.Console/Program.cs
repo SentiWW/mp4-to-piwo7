@@ -40,7 +40,7 @@ var audioSize = inputFile.Metadata.Duration.TotalSeconds * inputFile.Metadata.Au
 var timeToExtractAudio = TimeSpan.FromSeconds(audioSize / inputFile.Metadata.AudioData.BitRateKbs);
     
 // Extract audio from mp4
-Console.WriteLine($"Exporting audio will take approximately {timeToExtractAudio.TotalSeconds} seconds. Do you want to continue (y/n)?");
+Console.WriteLine($"Exporting audio will take approximately {timeToExtractAudio.Seconds} seconds. Do you want to continue (y/n)?");
 
 var key = Console.ReadKey();
 if (key.Key != ConsoleKey.Y)
@@ -55,7 +55,7 @@ var totalFrames = (int)Math.Floor(inputFile.Metadata.VideoData.Fps * inputFile.M
 var timeToExtractVideo = TimeSpan.FromSeconds(totalFrames / inputFile.Metadata.VideoData.Fps);
 
 // Export all frames
-Console.WriteLine($"Exporting video frames will take approximately {timeToExtractVideo.TotalSeconds} seconds. Do you want to continue (y/n)?");
+Console.WriteLine($"Exporting video frames will take approximately {timeToExtractVideo.Seconds} seconds. Do you want to continue (y/n)?");
 
 key = Console.ReadKey();
 if (key.Key != ConsoleKey.Y)
