@@ -1,10 +1,13 @@
 ﻿using System.Buffers;
 using System.Text;
+
 using CommandLine;
+
 using ImageMagick;
 
 using MediaToolkit;
 using MediaToolkit.Model;
+
 using PiwoConverter.Console;
 
 var paramsResult = Parser.Default.ParseArguments<Options>(args);
@@ -17,6 +20,24 @@ var dataDirectory = Path.Combine(currentDirectory, "data");
 var inputVideoPath = paramsResult.Value.InputPath;
 var outputAudioPath = Path.Combine(dataDirectory, "audio.mp3");
 var outputFramesPath = Path.Combine(dataDirectory, "frames");
+const int desiredFramerate = 20;
+var outputVideoPath = Path.Combine(dataDirectory, $"video-{desiredFramerate}-fps.mp4");
+
+// https://ffmpeg.org/ffmpeg-scaler.html#toc-Scaler-Options
+var scalingAlgorithms = new []
+{
+    "fast_bilinear", 
+    "bilinear", 
+    "bicubic", 
+    "experimental", 
+    "neighbor", 
+    "area", 
+    "bicublin", 
+    "gauss", 
+    "sinc", 
+    "lanczos", 
+    "spline"
+};
 
 var piwoHeader = $"PIWO_7_FILE{Environment.NewLine}" +
                       $"12 10{Environment.NewLine}";
@@ -35,10 +56,18 @@ var inputFile = new MediaFile
 
 engine.GetMetadata(inputFile);
 
-// Calculating how long audio extracvtion will take
+// Change the framerate of the video to 20fps
+if (Math.Abs(inputFile.Metadata.VideoData.Fps - desiredFramerate) > 0.1)
+{
+    engine.CustomCommand($"-i {inputVideoPath} -r {desiredFramerate} -c:v copy -c:a copy {outputVideoPath}");
+    inputVideoPath = outputVideoPath;
+    inputFile.Filename = outputVideoPath;
+    engine.GetMetadata(inputFile);
+}
+// Calculating how long audio extraction will take
 var audioSize = inputFile.Metadata.Duration.TotalSeconds * inputFile.Metadata.AudioData.BitRateKbs / 8;
 var timeToExtractAudio = TimeSpan.FromSeconds(audioSize / inputFile.Metadata.AudioData.BitRateKbs);
-    
+
 // Extract audio from mp4
 Console.WriteLine($"Exporting audio will take approximately {timeToExtractAudio.Seconds} seconds. Do you want to continue (y/n)?");
 
@@ -51,39 +80,31 @@ await Task.Run(() => engine.CustomCommand($"-i {inputVideoPath} -vn -acodec libm
 Console.WriteLine($"Audio exported to {outputAudioPath}.");
 
 // Calculating how long extraction will take
-var totalFrames = (int)Math.Floor(inputFile.Metadata.VideoData.Fps * inputFile.Metadata.Duration.TotalSeconds);
-var timeToExtractVideo = TimeSpan.FromSeconds(totalFrames / inputFile.Metadata.VideoData.Fps);
+var totalFrames = (int)Math.Floor(desiredFramerate * inputFile.Metadata.Duration.TotalSeconds);
+var timeToExtractVideo = TimeSpan.FromSeconds(totalFrames / desiredFramerate);
 
 // Export all frames
-Console.WriteLine($"Exporting video frames will take approximately {timeToExtractVideo.Seconds} seconds. Do you want to continue (y/n)?");
+Console.WriteLine($"Exporting video frames will take approximately {timeToExtractVideo.Seconds} seconds. " +
+                  $"They need to be exported for each scaling algorithm defined so in total this will take {timeToExtractVideo.Seconds * scalingAlgorithms.Length} seconds. " +
+                  $"Do you want to continue (y/n)?");
 
 key = Console.ReadKey();
 if (key.Key != ConsoleKey.Y)
     return;
 
-Console.WriteLine($"{Environment.NewLine}Exporting video frames... ");
-await Task.Run(() => engine.CustomCommand($"-i {inputVideoPath} -vf \"select=gte(n\\,0)\" -vsync vfr {Path.Join(outputFramesPath, "raw-frame-%d.bmp")}")); 
-Console.WriteLine("Video frames exported.");
-
 const int width = 12;
 const int height = 10;
 
-var resizeSize = new MagickGeometry(width, height)
-{
-    IgnoreAspectRatio = true
-};
-
 var outputBuilder = new StringBuilder();
 
-Console.WriteLine("Processing video frames, this might take a while...");
-    
-foreach (var interpolateMethod in Enum.GetValues<PixelInterpolateMethod>())
-{
-    if (interpolateMethod is PixelInterpolateMethod.Undefined)
-        continue;
+Console.WriteLine($"{Environment.NewLine}Processing video frames, this might take a while...");
 
-    var interpolateMethodName = Enum.GetName(interpolateMethod)!.ToLower();
-    var piwoOutputPath = Path.Combine(dataDirectory, $"output-{interpolateMethodName}.piwo7");
+foreach (var scalingAlgorithm in scalingAlgorithms)
+{
+    Console.WriteLine($"Exporting video frames for {scalingAlgorithm} scaling algorithm...");
+    await Task.Run(() => engine.CustomCommand($"-i {inputVideoPath} -vf \"select=gte(n\\,0),scale={width}:{height}:sws_flags={scalingAlgorithm}\" -vsync vfr {Path.Join(outputFramesPath, "raw-frame-%d.bmp")}"));
+    
+    var piwoOutputPath = Path.Combine(dataDirectory, $"output-{scalingAlgorithm}.piwo7");
 
     if (File.Exists(piwoOutputPath))
         File.Delete(piwoOutputPath);
@@ -97,7 +118,6 @@ foreach (var interpolateMethod in Enum.GetValues<PixelInterpolateMethod>())
 
         // Resize frame and interpolate
         using var frame = new MagickImage(rawFrameFilePath);
-        frame.InterpolativeResize(resizeSize, interpolateMethod);
         
         // Convert frame to piwo7
         var buffer = ArrayPool<string>.Shared.Rent(width * height);
@@ -128,7 +148,7 @@ foreach (var interpolateMethod in Enum.GetValues<PixelInterpolateMethod>())
         }
         outputBuilder.AppendLine();
 
-        Console.WriteLine($"Frames processed ({interpolateMethodName} interpolation): {currentFrameNumber + 1}/{totalFrames}");
+        Console.WriteLine($"Frames processed ({scalingAlgorithm} scaling): {currentFrameNumber + 1}/{totalFrames}");
         
         ArrayPool<string>.Shared.Return(buffer);
     }
@@ -139,13 +159,17 @@ foreach (var interpolateMethod in Enum.GetValues<PixelInterpolateMethod>())
     writer.Close();
     outputBuilder.Clear();
     
-    Console.WriteLine($"Output file created for {interpolateMethodName} interpolation: {piwoOutputPath}");
+    Console.WriteLine($"Output file created for {scalingAlgorithm} scaling: {piwoOutputPath}");
 }
 
-Console.WriteLine("Remove temporary frame files (y/n)?");
+Console.WriteLine("Remove temporary files (y/n)?");
 
 key = Console.ReadKey();
 if (key.Key != ConsoleKey.Y)
     return;
     
-Directory.Delete(outputFramesPath, true);    
+if (Directory.Exists(outputFramesPath))
+    Directory.Delete(outputFramesPath, true);    
+
+if (File.Exists(outputVideoPath))
+    File.Delete(outputVideoPath);
