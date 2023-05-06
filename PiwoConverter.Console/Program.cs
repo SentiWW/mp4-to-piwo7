@@ -153,6 +153,7 @@ foreach (var scalingAlgorithm in scalingAlgorithms)
         ArrayPool<string>.Shared.Return(buffer);
     }
     
+    // Write piwo7 file
     await using var writer = new StreamWriter(piwoOutputPath);
     await writer.WriteAsync(outputBuilder.ToString());
     await writer.FlushAsync();
