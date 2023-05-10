@@ -7,6 +7,7 @@ using ImageMagick;
 
 using MediaToolkit;
 using MediaToolkit.Model;
+using MediaToolkit.Options;
 
 using PiwoConverter.Console;
 
@@ -49,9 +50,15 @@ if (!Directory.Exists(outputFramesPath))
     Directory.CreateDirectory(outputFramesPath);
 
 using var engine = new Engine();
+
 var inputFile = new MediaFile
 {
     Filename = inputVideoPath
+};
+
+var outputFile = new MediaFile
+{
+    Filename = outputVideoPath
 };
 
 engine.GetMetadata(inputFile);
@@ -59,7 +66,8 @@ engine.GetMetadata(inputFile);
 // Change the framerate of the video to 20fps
 if (Math.Abs(inputFile.Metadata.VideoData.Fps - desiredFramerate) > 0.1)
 {
-    engine.CustomCommand($"-i {inputVideoPath} -r {desiredFramerate} -c:v copy -c:a copy {outputVideoPath}");
+    var options = new ConversionOptions{VideoFps = desiredFramerate};
+    engine.Convert(inputFile, outputFile, options);
     inputVideoPath = outputVideoPath;
     inputFile.Filename = outputVideoPath;
     engine.GetMetadata(inputFile);
@@ -118,6 +126,7 @@ foreach (var scalingAlgorithm in scalingAlgorithms)
 
         // Resize frame and interpolate
         using var frame = new MagickImage(rawFrameFilePath);
+        frame.Modulate(new Percentage(40),new Percentage(170),new Percentage(33.33));
         
         // Convert frame to piwo7
         var buffer = ArrayPool<string>.Shared.Rent(width * height);
